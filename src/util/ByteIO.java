@@ -19,7 +19,7 @@ public final class ByteIO {
     public static int readInt(InputStream in) throws IOException {
         byte[] b = new byte[4];
         readFully(in, b, 0, 4);
-        return ((b[0] & 0xFF) << 24) | ((b[1] & 0xFF) << 16) | ((b[2] & 0xFF) << 8) | (b[3] & 0xFF);
+        return bytesToInt(b, 0);
     }
 
     public static byte[] intToBytes(int v) {
@@ -29,5 +29,10 @@ public final class ByteIO {
                 (byte) ((v >>> 8) & 0xFF),
                 (byte) (v & 0xFF)
         };
+    }
+
+    public static int bytesToInt(byte[] b, int off) {
+        return ((b[off] & 0xFF) << 24) | ((b[off + 1] & 0xFF) << 16)
+                | ((b[off + 2] & 0xFF) << 8) | (b[off + 3] & 0xFF);
     }
 }
