@@ -179,15 +179,15 @@ public final class NeighborLink {
         refreshInterestSignal();
     }
 
-    private void handleRequest(byte[] payload) {
+    private void handleRequest(byte[] payload) throws IOException {
         int idx = ByteIO.bytesToInt(payload, 0);
         if (!state.uploadingTo.contains(remotePeerId)) return;
+        if (!state.myBitfield.has(idx)) return;
         byte[] content = state.vault.loadPiece(idx);
-        if (content == null) return;
         sendPiece(idx, content);
     }
 
-    private void handlePiece(byte[] payload) {
+    private void handlePiece(byte[] payload) throws IOException {
         int idx = ByteIO.bytesToInt(payload, 0);
         byte[] content = new byte[payload.length - 4];
         System.arraycopy(payload, 4, content, 0, content.length);
@@ -214,10 +214,6 @@ public final class NeighborLink {
 
             if (state.myBitfield.isComplete()) {
                 logger.logCompleted();
-                try {
-                    state.vault.flushToDisk();
-                } catch (IOException e) {
-                }
             }
         }
 

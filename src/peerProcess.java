@@ -49,10 +49,9 @@ public final class peerProcess {
             throw new IllegalStateException("Failed to create peer directory: " + peerDir.getPath());
         }
 
-        PieceVault vault = new PieceVault(commonState, peerDir, common.fileName);
+        PieceVault vault = new PieceVault(commonState, peerDir, common.fileName, self.hasFile());
         Bitfield myBitfield = new Bitfield(commonState.numPieces());
         if (self.hasFile()) {
-            vault.loadFromDisk();
             myBitfield.setAll();
         }
 
@@ -119,6 +118,7 @@ public final class peerProcess {
         for (NeighborLink link : state.links.values()) {
             link.closeSocket();
         }
+        try { vault.close(); } catch (IOException ignore) {}
         logger.close();
         System.exit(0);
     }

@@ -2,24 +2,34 @@ package io;
 
 import model.CommonState;
 
-import java.io.EOFException;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 
-public final class PieceVault {
+public final class PieceVault implements AutoCloseable {
     private final CommonState commonState;
-    private final File fullFilePath;
-    private final byte[][] pieces;
+    private final RandomAccessFile raf;
 
-    public PieceVault(CommonState commonState, File peerDir, String fileName) {
+    public PieceVault(CommonState commonState, File peerDir, String fileName, boolean seeder) throws IOException {
         if (commonState == null) throw new IllegalArgumentException("commonState is null");
         if (peerDir == null) throw new IllegalArgumentException("peerDir is null");
         if (fileName == null || fileName.isBlank()) throw new IllegalArgumentException("fileName empty");
         this.commonState = commonState;
-        this.fullFilePath = new File(peerDir, fileName);
-        this.pieces = new byte[commonState.numPieces()][];
+
+        File file = new File(peerDir, fileName);
+        if (seeder) {
+            if (!file.exists()) {
+                throw new IOException("Seeder file missing at startup: " + file.getPath());
+            }
+            if (file.length() < commonState.fileSize()) {
+                throw new IOException("Seeder file shorter than FileSize: " + file.getPath());
+            }
+        } else if (!file.exists() || file.length() != commonState.fileSize()) {
+            try (RandomAccessFile init = new RandomAccessFile(file, "rw")) {
+                init.setLength(commonState.fileSize());
+            }
+        }
+        this.raf = new RandomAccessFile(file, "rw");
     }
 
     public int lengthOf(int index) {
@@ -32,41 +42,26 @@ public final class PieceVault {
         return commonState.pieceSize();
     }
 
-    public void loadFromDisk() throws IOException {
-        if (!fullFilePath.exists()) {
-            throw new IOException("Complete file missing at startup: " + fullFilePath.getPath());
-        }
-        try (FileInputStream fis = new FileInputStream(fullFilePath)) {
-            for (int i = 0; i < commonState.numPieces(); i++) {
-                int len = lengthOf(i);
-                byte[] piece = new byte[len];
-                int read = 0;
-                while (read < len) {
-                    int r = fis.read(piece, read, len - read);
-                    if (r < 0) throw new EOFException("Unexpected EOF reading " + fullFilePath.getPath());
-                    read += r;
-                }
-                pieces[i] = piece;
-            }
-        }
+    public synchronized byte[] loadPiece(int index) throws IOException {
+        byte[] buf = new byte[lengthOf(index)];
+        raf.seek((long) index * commonState.pieceSize());
+        raf.readFully(buf);
+        return buf;
     }
 
-    public synchronized void storePiece(int index, byte[] content) {
-        if (pieces[index] == null) pieces[index] = content;
-    }
-
-    public synchronized byte[] loadPiece(int index) {
-        return pieces[index];
-    }
-
-    public synchronized void flushToDisk() throws IOException {
-        try (FileOutputStream fos = new FileOutputStream(fullFilePath)) {
-            for (int i = 0; i < commonState.numPieces(); i++) {
-                if (pieces[i] == null) {
-                    throw new IOException("Missing piece " + i + " at write time");
-                }
-                fos.write(pieces[i]);
-            }
+    public synchronized void storePiece(int index, byte[] content) throws IOException {
+        if (content == null) throw new IllegalArgumentException("content is null");
+        int expected = lengthOf(index);
+        if (content.length != expected) {
+            throw new IOException("Piece " + index + " has length " + content.length
+                    + " but expected " + expected);
         }
+        raf.seek((long) index * commonState.pieceSize());
+        raf.write(content);
+    }
+
+    @Override
+    public synchronized void close() throws IOException {
+        raf.close();
     }
 }
